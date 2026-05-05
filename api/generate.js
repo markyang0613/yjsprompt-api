@@ -1,3 +1,6 @@
+const GEMINI_ENDPOINT =
+  "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -20,31 +23,45 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Missing systemPrompt" });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return res.status(500).json({ error: "Server misconfigured" });
   }
 
-  let openaiRes;
+  let geminiRes;
   try {
-    openaiRes = await fetch("https://api.openai.com/v1/responses", {
+    geminiRes = await fetch(GEMINI_ENDPOINT, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
-        max_output_tokens: 1000,
+        model: "gemini-2.0-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: input.trim() },
+        ],
+        max_tokens: 1000,
         temperature: 0.3,
-        instructions: systemPrompt,
-        input: input.trim(),
       }),
     });
   } catch {
-    return res.status(502).json({ error: "Failed to reach OpenAI" });
+    return res.status(502).json({ error: "Failed to reach Gemini" });
   }
 
-  const data = await openaiRes.json();
-  return res.status(openaiRes.status).json(data);
+  const data = await geminiRes.json();
+
+  if (!geminiRes.ok) {
+    const message =
+      data?.error?.message || data?.error || `Request failed (${geminiRes.status})`;
+    return res.status(geminiRes.status).json({ error: message });
+  }
+
+  const text = data?.choices?.[0]?.message?.content?.trim();
+  if (!text) {
+    return res.status(500).json({ error: "Gemini returned no text content" });
+  }
+
+  return res.status(200).json({ text });
 }
